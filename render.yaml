@@ -1,0 +1,49 @@
+services:
+  - type: web
+    name: ultrafastytapi
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: |
+      apt-get install -y aria2 ffmpeg || true
+      pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT --workers 1
+    healthCheckPath: /health
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: ultrafastytapi-redis
+          type: redis
+          property: connectionString
+      - key: DOWNLOADS_DIR
+        value: /tmp/downloads
+      - key: CACHE_TTL
+        value: "1800"
+      - key: YT_JS_ENGINE
+        value: auto
+
+  - type: worker
+    name: ultrafastytapi-worker
+    runtime: python
+    plan: free
+    region: oregon
+    buildCommand: |
+      apt-get install -y aria2 ffmpeg || true
+      pip install -r requirements.txt
+    startCommand: celery -A tasks.celery_app worker --loglevel=info --concurrency=1 -Q downloads,celery --max-tasks-per-child=10
+    envVars:
+      - key: REDIS_URL
+        fromService:
+          name: ultrafastytapi-redis
+          type: redis
+          property: connectionString
+      - key: DOWNLOADS_DIR
+        value: /tmp/downloads
+      - key: YT_JS_ENGINE
+        value: auto
+
+  - type: redis
+    name: ultrafastytapi-redis
+    plan: free
+    region: oregon
+    maxmemoryPolicy: allkeys-lru
